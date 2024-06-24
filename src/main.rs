@@ -1,9 +1,9 @@
 use std::{
     env,
     fs::{self, File},
-    io::{BufRead, BufReader},
+    io::{self, BufRead, BufReader, Write},
     path::Path,
-    process::{ChildStdout, Command, Stdio},
+    process::{ChildStdout, Command, Stdio}, time::Instant,
 };
 
 use colored::Colorize;
@@ -42,7 +42,7 @@ fn xcodebuild_build(
         .stderr(Stdio::from(errfile))
         .spawn()?;
 
-    let _xcpretty = Command::new("xcpretty")
+    let mut xcpretty = Command::new("xcpretty")
         .arg("-r")
         .arg("json-compilation-database")
         .arg("-o")
@@ -52,16 +52,20 @@ fn xcodebuild_build(
         .spawn()?;
 
     let status = xcodebuild.wait()?;
+    let _ = xcpretty.wait()?;
     Ok(status.success())
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let startime = Instant::now();
+
     let args: Vec<String> = env::args().collect();
     let Some(workspace_path) = args.get(1) else {
         return Err("Missing workspace argument".into());
     };
     let patterns: Option<Vec<&str>> = args.get(2).map(|p| p.split(",").collect());
 
+    println!("Listing workspace");
     let reader = xcodebuild_list(workspace_path)?;
     let schemes: Vec<String> = reader
         .lines()
@@ -82,14 +86,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         fs::create_dir("buildlogs")?;
     }
 
+    println!("Building schemes");
     for s in &schemes {
+        print!("{}", s);
+        io::stdout().flush()?;
+
         let build_status = xcodebuild_build(workspace_path, s, buildlog_dir)?;
         if build_status {
-            println!("{}", s.green());
+            println!("\r{}", s.green());
         } else {
-            println!("{}", s.red());
+            println!("\r{}", s.red());
         }
     }
+
+    let duration = startime.elapsed();
+    println!("Time elapsed: {:?}", duration);
 
     Ok(())
 }
