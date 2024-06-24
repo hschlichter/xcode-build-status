@@ -1,7 +1,7 @@
 use std::{
     env,
     fs::{self, File},
-    io::{BufRead, BufReader, Write},
+    io::{BufRead, BufReader},
     path::Path,
     process::{ChildStdout, Command, Stdio},
 };
@@ -15,49 +15,44 @@ fn xcodebuild_list(workspace: &str) -> Result<BufReader<ChildStdout>, Box<dyn st
         .arg(workspace)
         .arg("-list")
         .stdout(Stdio::piped())
-        .spawn()
-        .expect("Failed to spawn xcodebuild list process");
+        .spawn()?;
 
     let stdout = child.stdout.take().expect("Failed to grab stdout");
     Ok(BufReader::new(stdout))
 }
 
-fn xcodebuild_run(
+fn xcodebuild_build(
     workspace: &str,
     scheme: &str,
     buildlog_dir: &Path,
 ) -> Result<bool, Box<dyn std::error::Error>> {
-    let buildlog = buildlog_dir.join(format!("{}.log", scheme));
-    let mut logfile = File::create(buildlog)?;
+    let logfile_path = buildlog_dir.join(format!("{}.log", scheme));
+    let logfile = File::create(logfile_path)?;
 
-    let builderr = buildlog_dir.join(format!("{}.err.log", scheme));
-    let errfile = File::create(builderr)?;
+    let errfile_path = buildlog_dir.join(format!("{}.err.log", scheme));
+    let errfile = File::create(errfile_path)?;
 
-    let mut child = Command::new("xcodebuild")
+    let mut xcodebuild = Command::new("xcodebuild")
+        .arg("build")
         .arg("-workspace")
         .arg(workspace)
         .arg("-scheme")
         .arg(scheme)
         .stdout(Stdio::piped())
         .stderr(Stdio::from(errfile))
-        .spawn()
-        .expect("Failed to spawn xcodebuild list process");
+        .spawn()?;
 
-    let stdout = child.stdout.take().expect("Failed to grab stdout");
-    let reader = BufReader::new(stdout);
+    let _xcpretty = Command::new("xcpretty")
+        .arg("-r")
+        .arg("json-compilation-database")
+        .arg("-o")
+        .arg(format!("{}/{}_compile_commands.json", buildlog_dir.to_str().ok_or("No buildlog dir")?, scheme))
+        .stdin(xcodebuild.stdout.take().expect("Failed to capture stdin from xcodebuild"))
+        .stdout(Stdio::from(logfile))
+        .spawn()?;
 
-    let mut build_status = false;
-    for line in reader.lines() {
-        let l = line?;
-        logfile.write_all(&l.as_bytes())?;
-        logfile.write_all("\n".as_bytes())?;
-
-        if l.starts_with("** BUILD SUCCEEDED **") {
-            build_status = true;
-        }
-    }
-
-    Ok(build_status)
+    let status = xcodebuild.wait()?;
+    Ok(status.success())
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -88,7 +83,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     for s in &schemes {
-        let build_status = xcodebuild_run(workspace_path, s, buildlog_dir)?;
+        let build_status = xcodebuild_build(workspace_path, s, buildlog_dir)?;
         if build_status {
             println!("{}", s.green());
         } else {
