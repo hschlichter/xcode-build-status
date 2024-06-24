@@ -3,7 +3,8 @@ use std::{
     fs::{self, File},
     io::{self, BufRead, BufReader, Write},
     path::Path,
-    process::{ChildStdout, Command, Stdio}, time::Instant,
+    process::{ChildStdout, Command, Stdio},
+    time::Instant,
 };
 
 use colored::Colorize;
@@ -46,8 +47,17 @@ fn xcodebuild_build(
         .arg("-r")
         .arg("json-compilation-database")
         .arg("-o")
-        .arg(format!("{}/{}_compile_commands.json", buildlog_dir.to_str().ok_or("No buildlog dir")?, scheme))
-        .stdin(xcodebuild.stdout.take().expect("Failed to capture stdin from xcodebuild"))
+        .arg(format!(
+            "{}/{}_compile_commands.json",
+            buildlog_dir.to_str().ok_or("No buildlog dir")?,
+            scheme
+        ))
+        .stdin(
+            xcodebuild
+                .stdout
+                .take()
+                .expect("Failed to capture stdin from xcodebuild"),
+        )
         .stdout(Stdio::from(logfile))
         .spawn()?;
 
