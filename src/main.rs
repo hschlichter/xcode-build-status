@@ -7,7 +7,13 @@ use std::{
     time::Instant,
 };
 
+use chrono::Local;
 use colored::Colorize;
+
+fn get_timestamp() -> String {
+    let now = Local::now();
+    now.format("%Y%m%d%H%M%S").to_string()
+}
 
 fn xcodebuild_list(workspace: &str) -> Result<BufReader<ChildStdout>, Box<dyn std::error::Error>> {
     let mut child = Command::new("xcodebuild")
@@ -90,10 +96,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         })
         .collect();
-
-    let buildlog_dir = Path::new("buildlogs");
+    
+    let timestamp = get_timestamp();
+    let buildlog_timestamp_path = format!("buildlogs/{}", timestamp);
+    let buildlog_dir = Path::new(&buildlog_timestamp_path);
     if !buildlog_dir.exists() {
-        fs::create_dir("buildlogs")?;
+        fs::create_dir_all(&buildlog_timestamp_path)?;
     }
 
     println!("Building schemes");
